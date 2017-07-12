@@ -61,6 +61,11 @@ class UHDApp(object):
         self.freq = None
         self.channels = None
         self.cpu_format = None
+        self.spec = None
+        self.clock_source = None
+        self.time_source = None
+        self.lo_source = None
+        self.lo_export = None
 
     def vprint(self, *args):
         """
@@ -113,14 +118,16 @@ class UHDApp(object):
         num: required number of arguments
         arg: actual argument
         """
-
         if arg is None:
             return None
         args = [x.strip() for x in arg.split(",")]
+        if len(args) == 1:
+            args = args * num
         if len(args) != num:
             raise ValueError("Invalid {m} setting for {n} {b}: {a}".format(
                 m=arg_name, n=num, a=arg, b=num_name
             ))
+
         return args
 
     def async_callback(self, msg):
@@ -153,31 +160,22 @@ class UHDApp(object):
             )
         )
         # Set the subdevice spec:
-        args.spec = self.normalize_sel("mboards", "subdev",
+        self.spec = self.normalize_sel("mboards", "subdev",
                                        self.usrp.get_num_mboards(), args.spec)
-        if args.spec:
+        if self.spec:
             for mb_idx in xrange(self.usrp.get_num_mboards()):
-                if len(args.spec) == 1:
-                    self.usrp.set_subdev_spec(args.spec, mb_idx)
-                else:
-                    self.usrp.set_subdev_spec(args.spec[mb_idx], mb_idx)
+                self.usrp.set_subdev_spec(self.spec[mb_idx], mb_idx)
         # Set the clock and/or time source:
         if args.clock_source is not None:
-            args.clock_source = self.normalize_sel("mboards", "clock-source",
+            self.clock_source = self.normalize_sel("mboards", "clock-source",
                                                    self.usrp.get_num_mboards(), args.clock_source)
             for mb_idx in xrange(self.usrp.get_num_mboards()):
-                if len(args.time_source) == 1:
-                    self.usrp.set_clock_source(args.clock_source[0], mb_idx)
-                else:
-                    self.usrp.set_clock_source(args.clock_source[mb_idx], mb_idx)
+                self.usrp.set_clock_source(self.clock_source[mb_idx], mb_idx)
         if args.time_source is not None:
-            args.time_source = self.normalize_sel("mboards", "time-source",
+            self.time_source = self.normalize_sel("mboards", "time-source",
                                                   self.usrp.get_num_mboards(), args.time_source)
             for mb_idx in xrange(self.usrp.get_num_mboards()):
-                if len(args.time_source) == 1:
-                    self.usrp.set_time_source(args.time_source[0], mb_idx)
-                else:
-                    self.usrp.set_time_source(args.time_source[mb_idx], mb_idx)
+                self.usrp.set_time_source(self.time_source[mb_idx], mb_idx)
         # Sampling rate:
         self.usrp.set_samp_rate(args.samp_rate)
         self.samp_rate = self.usrp.get_samp_rate()
@@ -185,11 +183,9 @@ class UHDApp(object):
         # Set the antenna:
         self.antenna = self.normalize_sel("channels", "antenna", len(args.channels), args.antenna)
         if self.antenna is not None:
-            if len(self.antenna) == 1:
-                self.antenna = [self.antenna, ] * len(args.channels)
             for i, chan in enumerate(self.channels):
                 if not self.antenna[i] in self.usrp.get_antennas(i):
-                    self.vprint("[ERROR] {} is not a valid antenna name for this USRP device!".format(self.antenna[i]))
+                    print("[ERROR] {} is not a valid antenna name for this USRP device!".format(self.antenna[i]))
                     exit(1)
                 self.usrp.set_antenna(self.antenna[i], i)
                 self.vprint("[{prefix}] Channel {chan}: Using antenna {ant}.".format(
@@ -207,9 +203,9 @@ class UHDApp(object):
         self.has_lo_sensor = 'lo_locked' in self.usrp.get_sensor_names()
         # Set LO export and LO source operation
         if (args.lo_export is not None) and (args.lo_source is not None):
-            args.lo_source = self.normalize_sel("channels", "lo-source", len(args.channels), args.lo_source)
-            args.lo_export = self.normalize_sel("channels", "lo-export", len(args.channels), args.lo_export)
-            for chan,lo_source,lo_export in zip(self.channels,args.lo_source,args.lo_export):
+            self.lo_source = self.normalize_sel("channels", "lo-source", len(self.channels), args.lo_source)
+            self.lo_export = self.normalize_sel("channels", "lo-export", len(self.channels), args.lo_export)
+            for chan, lo_source, lo_export in zip(self.channels, self.lo_source, self.lo_export):
                 if (lo_source == "None") or (lo_export == "None"):
                     continue
                 if lo_export == "True":
